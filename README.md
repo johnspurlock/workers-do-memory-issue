@@ -16,4 +16,4 @@ Upload the module js worker script:
 From the cloudflare dashboard, deploy the new worker `memory-issue-repro` to a route.  Once deployed, there are three endpoints:
  - `https://memory-issue-repro.your-subdomain.workers.dev/put`: Loads initial data to durable object storage
  - `https://memory-issue-repro.your-subdomain.workers.dev/query`: Simulates read from the durable object, with initial load from storage
- - `https://memory-issue-repro.your-subdomain.workers.dev/hang`: Intential hang, useful for catching DO reset errors
+ - `https://memory-issue-repro.your-subdomain.workers.dev/hang`: Intentional hang, useful for catching DO reset errors
