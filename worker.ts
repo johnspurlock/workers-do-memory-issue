@@ -18,6 +18,8 @@ export default {
 
 //
 
+const MAX_ALLOWED_OBJECT_COUNT = 50;
+
 async function handleRequest(request: Request, memoryNamespace: DurableObjectNamespace): Promise<Response> {
     const url = new URL(request.url);
 
@@ -25,7 +27,7 @@ async function handleRequest(request: Request, memoryNamespace: DurableObjectNam
     if (m) {
         const path = m[1];
         const n = parseInt(m[2]);
-        if (!(n >= 1 && n <= 30)) throw new Error(`n should be between 1 and 30`);
+        if (!(n >= 1 && n <= MAX_ALLOWED_OBJECT_COUNT)) throw new Error(`n should be between 1 and ${MAX_ALLOWED_OBJECT_COUNT}`);
 
         if (path === 'hang') {
             const objectName = computeObjectName(n);

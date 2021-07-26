@@ -172,8 +172,8 @@ function computeChunkKey(chunkId: string): string {
 
 function generateChunk(): Chunk {
     const chunk: Chunk = {};
-    // try to hit 3.1k
-    for (let i = 0; i < 31; i++) {
+    // try to hit 4k, (3.1k not quite large enough to trigger)
+    for (let i = 0; i < 41; i++) {
         chunk[`item${i}`] = 'x'.repeat(100);
     }
     return chunk;
