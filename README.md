@@ -13,7 +13,18 @@ Build the module js worker script:
 Upload the module js worker script:
  - `deno run --unstable --allow-env --allow-net --allow-read=. tool.ts push`
 
-From the cloudflare dashboard, deploy the new worker `memory-issue-repro` to a route.  Once deployed, there are three endpoints:
- - `https://memory-issue-repro.your-subdomain.workers.dev/put`: Loads initial data to durable object storage
- - `https://memory-issue-repro.your-subdomain.workers.dev/query`: Simulates read from the durable object, with initial load from storage
- - `https://memory-issue-repro.your-subdomain.workers.dev/hang`: Intentional hang, useful for catching DO reset errors
+From the cloudflare dashboard, deploy the new worker `memory-issue-repro` to a route.  Once deployed, there are three endpoints.  Each endpoint takes a trailing `n` path token to indicate how many objects to create for the test (n = 1 to 30).
+
+Example using n = 20
+
+First, ensure the data is generated and saved to DO storage:
+ - Hit `https://memory-issue-repro.your-subdomain.workers.dev/put/20` until the `dataLoadedPercentage` reaches `100`
+
+To query all objects at once, each one will load from storage on the initial request:
+ - Hit `https://memory-issue-repro.your-subdomain.workers.dev/query/20`
+ - It's expected that the first request might take the slow path (objects will load from storage, and `loadeds.length` > 0), but subsequent requests should be fast (`loadeds.length` == 0)
+ - The issue seems to be that once you have a large enough `n`, DO instances will be loaded inside the same isolate/process and thus compete for the same memory limit and storage api calls.  You'll see the slow path for subsequent requests when this happens, which is unexpected.
+ - Observe `processInstances` to see how many DO instances are mapped into which process.
+
+To cause a intentional hanging request to one of the objects:
+ - Hit `https://memory-issue-repro.your-subdomain.workers.dev/hang/17` where n in this case is the object number to use
