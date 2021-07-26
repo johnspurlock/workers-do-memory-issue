@@ -5,12 +5,13 @@ export interface SuccessResponse<TResult> {
     readonly success: true;
     readonly version: number;
     readonly ensureLoadedMillis: number;
-    readonly loadTime: string;
+    readonly staticId: string;
     readonly instanceId: string;
     readonly loadedChunks: number;
     readonly loadedRecords: number;
     readonly loadedSize: number;
     readonly loadedListCalls: number;
+    readonly memoryChunks: number;
     readonly result: TResult;
 }
 
@@ -18,12 +19,13 @@ export interface FailureResponse {
     readonly success: false;
     readonly version?: number;
     readonly ensureLoadedMillis?: number;
-    readonly loadTime?: string;
+    readonly staticId?: string;
     readonly instanceId?: string;
     readonly loadedChunks?: number;
     readonly loadedRecords?: number;
     readonly loadedSize?: number;
     readonly loadedListCalls?: number;
+    readonly memoryChunks?: number;
     readonly error: string;
     readonly side: string;
 }

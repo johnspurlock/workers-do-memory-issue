@@ -1,11 +1,13 @@
 import { DurableObjectState } from './deps.ts';
 import { DurableObjectEnv } from './worker_types.d.ts';
 import { APPLICATION_JSON_UTF8 } from './constants.ts';
-import { ClearRequest, ClearResult, PutRequest, PutResult, QueryRequest, QueryResult, Req, Result } from './memory_do_rpc.d.ts';
+import { ClearRequest, ClearResult, FailureResponse, PutRequest, PutResult, QueryRequest, QueryResult, Req, Result, SuccessResponse } from './memory_do_rpc.d.ts';
+import { generateUuid } from './uuid_v4.ts';
 
 export class MemoryDO {
     readonly state: DurableObjectState;
     readonly env: DurableObjectEnv;
+    readonly instanceId: string;
 
     loaded = false;
     loadedChunks = 0;
@@ -17,10 +19,11 @@ export class MemoryDO {
     constructor(state: DurableObjectState, env: DurableObjectEnv) {
         this.state = state;
         this.env = env;
+        if (_staticId === undefined) _staticId = computeUniqueId();
+        this.instanceId = computeUniqueId();
     }
 
     async fetch(request: Request): Promise<Response> {
-        if (_durableObjectLoadTime === undefined) { _durableObjectLoadTime = new Date().toISOString(); }
         const hangRes = await tryHandleHang(request); if (hangRes) return hangRes;
         
         return await this.computeResponse(request);
@@ -31,11 +34,14 @@ export class MemoryDO {
     private async computeResponse(request: Request): Promise<Response> {
         let ensureLoadedMillis: number | undefined;
         const version = 1;
-        const loadTime = _durableObjectLoadTime;
+        const staticId = _staticId;
+        const instanceId = this.instanceId;
         let loadedChunks: number | undefined;
         let loadedRecords: number | undefined;
         let loadedSize: number | undefined;
         let loadedListCalls: number | undefined;
+        let memoryChunks: number | undefined;
+
         try {
             const start = Date.now();
             await this.ensureLoaded();
@@ -46,10 +52,11 @@ export class MemoryDO {
             loadedListCalls = this.loadedListCalls;
             const req = await request.json() as Req;
             const result = await this.computeResult(req);
+            memoryChunks = this.chunks.size;
             
-            return new Response(JSON.stringify({ success: true, version, ensureLoadedMillis, loadTime, loadedChunks, loadedRecords, loadedSize, loadedListCalls, result }, undefined, 2), { headers });
+            return new Response(JSON.stringify({ success: true, version, ensureLoadedMillis, staticId, instanceId, loadedChunks, loadedRecords, loadedSize, loadedListCalls, memoryChunks, result } as SuccessResponse<Result>, undefined, 2), { headers });
         } catch (e) {
-            return new Response(JSON.stringify({ success: false, version, ensureLoadedMillis, loadTime, loadedChunks, loadedRecords, loadedSize, loadedListCalls, side: 'do', error: `${e.stack || e}` }, undefined, 2), { headers });
+            return new Response(JSON.stringify({ success: false, version, ensureLoadedMillis, staticId, instanceId, loadedChunks, loadedRecords, loadedSize, loadedListCalls, memoryChunks, side: 'do', error: `${e.stack || e}` } as FailureResponse, undefined, 2), { headers });
         }
     }
 
@@ -59,7 +66,7 @@ export class MemoryDO {
         const limit = 512; // watch out, too large and it will hang!!  kenton says 16mb
         let start: string | undefined;
         while (true) {
-            const results = await this.state.storage.list({ prefix: 'v1-chunk-', limit, start });
+            const results = await this.state.storage.list({ prefix: CHUNK_PREFIX, limit, start });
             this.loadedListCalls++;
             for (const [chunkKey, chunkObj] of results) {
                 if (chunkKey === start) continue; // start = inclusive
@@ -96,7 +103,6 @@ export class MemoryDO {
         for (const chunk of this.chunks.values()) {
             for (const [_id, _lineString] of Object.entries(chunk)) {
                 lineStrings++;
-
             }
         }
         return { kind: 'query', counts: {}, ids: undefined, debug: `lineStrings=${lineStrings}` } as QueryResult;
@@ -107,12 +113,15 @@ export class MemoryDO {
         const attributesUpdateCount = 0;
 
         const toInsert: Record<string, Chunk> = {};
+        let toInserts = 0;
         for (let i = 0; i < 4096; i++) {
             const chunkId = i.toString(16).padStart(3, '0');
             const chunkKey = computeChunkKey(chunkId);
             if (!this.chunks.has(chunkKey)) {
                 const chunk = generateChunk();
                 toInsert[chunkKey] = chunk;
+                toInserts++;
+                if (toInserts === 1024) break; // limit the number to insert in one go, to avoid excess cpu issues
             }
         }
         const insertKeys = Object.keys(toInsert);
@@ -144,10 +153,11 @@ export class MemoryDO {
 //
 
 const DATA_VERSION = 1;
+const CHUNK_PREFIX = `v${DATA_VERSION}-chunk-`;
+
+let _staticId: string | undefined;
 
 const headers: HeadersInit = { 'Content-Type': APPLICATION_JSON_UTF8 };
-
-let _durableObjectLoadTime: string | undefined; // instant
 
 async function tryHandleHang(request: Request): Promise<Response | undefined> {
     if (!(request.method === 'POST' && /^https:\/\/[a-z-]+\/hang$/.test(request.url))) return undefined;
@@ -157,7 +167,7 @@ async function tryHandleHang(request: Request): Promise<Response | undefined> {
 }
 
 function computeChunkKey(chunkId: string): string {
-    return `v${DATA_VERSION}-chunk-${chunkId}`;
+    return `${CHUNK_PREFIX}${chunkId}`;
 }
 
 function generateChunk(): Chunk {
@@ -167,6 +177,10 @@ function generateChunk(): Chunk {
         chunk[`item${i}`] = 'x'.repeat(100);
     }
     return chunk;
+}
+
+function computeUniqueId() {
+    return `${new Date().toISOString()}-${generateUuid().split('-').pop()}`;
 }
 
 //
