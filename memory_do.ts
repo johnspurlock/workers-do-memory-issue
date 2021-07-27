@@ -1,7 +1,7 @@
 import { DurableObjectState } from './deps.ts';
 import { DurableObjectEnv } from './worker_types.d.ts';
 import { APPLICATION_JSON_UTF8, VERSION } from './constants.ts';
-import { ClearRequest, ClearResult, FailureResponse, PutRequest, PutResult, QueryRequest, QueryResult, Req, Result, SuccessResponse } from './memory_do_rpc.d.ts';
+import { ClearRequest, ClearResult, FailureResponse, LoadResult, PutRequest, PutResult, QueryRequest, QueryResult, Req, Result, SuccessResponse } from './memory_do_rpc.d.ts';
 import { generateUuid } from './uuid_v4.ts';
 
 export class MemoryDO {
@@ -46,14 +46,14 @@ export class MemoryDO {
             const req = await request.json() as Req;
 
             const start = Date.now();
-            if (req.kind !== 'clear') await this.ensureLoaded();
+            const didLoad = req.kind !== 'clear' && await this.ensureLoaded();
             ensureLoadedMillis = Date.now() - start;
             loadedChunks = this.loadedChunks;
             loadedRecords = this.loadedRecords;
             loadedSize = this.loadedSize;
             loadedListCalls = this.loadedListCalls;
             
-            const result = await this.computeResult(req);
+            const result = didLoad ? computeLoadResult() : await this.computeResult(req);
             memoryChunks = this.chunks.size;
             
             return new Response(JSON.stringify({ success: true, version, ensureLoadedMillis, processId, instanceId, loadedChunks, loadedRecords, loadedSize, loadedListCalls, memoryChunks, result } as SuccessResponse<Result>, undefined, 2), { headers });
@@ -62,8 +62,8 @@ export class MemoryDO {
         }
     }
 
-    private async ensureLoaded() {
-        if (this.loaded) return;
+    private async ensureLoaded(): Promise<boolean> /* didLoad */ {
+        if (this.loaded) return false;
 
         const limit = 512; // watch out, too large and it will hang!!  kenton says 16mb
         let start: string | undefined;
@@ -85,6 +85,7 @@ export class MemoryDO {
             if (results.size < limit) break;
         }
         this.loaded = true;
+        return true;
     }
 
     private async computeResult(req: Req): Promise<Result> {
@@ -147,7 +148,7 @@ export class MemoryDO {
     private async computeClearResult(_req: ClearRequest): Promise<ClearResult> {
         await this.state.storage.deleteAll();
         this.chunks.clear();
-        return { kind: 'clear' } as ClearResult;
+        return { kind: 'clear' };
     }
 
 }
@@ -156,6 +157,7 @@ export class MemoryDO {
 
 const DATA_VERSION = 1;
 const CHUNK_PREFIX = `v${DATA_VERSION}-chunk-`;
+const STRING_100 = 'x'.repeat(100);
 
 let _processId: string | undefined;
 
@@ -176,13 +178,17 @@ function generateChunk(): Chunk {
     const chunk: Chunk = {};
     // try to hit 4k, (3.1k not quite large enough to trigger)
     for (let i = 0; i < 31; i++) {
-        chunk[`item${i}`] = 'x'.repeat(100);
+        chunk[`item${i}`] = STRING_100;
     }
     return chunk;
 }
 
 function computeUniqueId() {
     return `${new Date().toISOString()}-${generateUuid().split('-').pop()}`;
+}
+
+function computeLoadResult(): LoadResult {
+    return { kind: 'load' };
 }
 
 //

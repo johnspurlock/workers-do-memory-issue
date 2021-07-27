@@ -1,6 +1,6 @@
 
 import { existsSync } from './deps_tool.ts';
-import { createDurableObjectsNamespace, listDurableObjectsNamespaces, putScript, updateDurableObjectsNamespace } from './cloudflare_api.ts';
+import { createDurableObjectsNamespace, deleteDurableObjectsNamespace, deleteScript, listDurableObjectsNamespaces, putScript, updateDurableObjectsNamespace } from './cloudflare_api.ts';
 
 const NAMESPACE_NAME = 'memory-issue-namespace';
 const SCRIPT_NAME = 'memory-issue-repro';
@@ -13,14 +13,19 @@ function readRequiredEnv(name: string): string {
     return rt;
 }
 
+function readCloudflareApiEnvs(): { accountId: string, apiToken: string } {
+    const accountId = readRequiredEnv('CF_ACCOUNT_ID');
+    const apiToken = readRequiredEnv('CF_API_TOKEN');
+    return { accountId, apiToken };
+}
+
 async function push() {
     console.log('push!');
 
-    if (!existsSync('worker.js')) throw new Error('worker.js does not exists, did you run: deno bundle worker.ts worker.js');
+    if (!existsSync('worker.js')) throw new Error('worker.js does not exist, did you run: deno bundle worker.ts worker.js');
     const scriptContents = Deno.readFileSync('worker.js');
     
-    const accountId = readRequiredEnv('CF_ACCOUNT_ID');
-    const apiToken = readRequiredEnv('CF_API_TOKEN');
+    const { accountId, apiToken } = readCloudflareApiEnvs();
 
     let namespace = (await listDurableObjectsNamespaces(accountId, apiToken)).find(v => v.name === NAMESPACE_NAME);
     if (namespace === undefined) {
@@ -39,16 +44,45 @@ async function push() {
     if (DEBUG) console.log(script);
 
     if (typeof namespace.class !== 'string' || typeof namespace.script !== 'string') {
-        console.log(`updating namespace ${NAMESPACE_NAME}...`);
+        console.log(`defining namespace ${NAMESPACE_NAME}...`);
         namespace = await updateDurableObjectsNamespace(accountId, apiToken, { ...namespace, class: 'MemoryDO', script: SCRIPT_NAME });
-        console.log(`updated namespace ${NAMESPACE_NAME}`);
+        console.log(`defined namespace ${NAMESPACE_NAME}`);
         if (DEBUG) console.log(namespace);
+    }
+}
+
+async function teardown() {
+    console.log('teardown!');
+
+    const { accountId, apiToken } = readCloudflareApiEnvs();
+
+    console.log(`deleting namespace ${NAMESPACE_NAME}...`);
+    const namespace = (await listDurableObjectsNamespaces(accountId, apiToken)).find(v => v.name === NAMESPACE_NAME);
+    if (namespace !== undefined) {
+        await deleteDurableObjectsNamespace(accountId, apiToken, namespace.id);
+        console.log(`deleted namespace ${NAMESPACE_NAME}`);
+    } else {
+        console.log(`namespace ${NAMESPACE_NAME} does not exist`);
+    }
+
+    console.log(`deleting script ${SCRIPT_NAME}...`);
+    try {
+        const deleteResult = await deleteScript(accountId, SCRIPT_NAME, apiToken);
+        console.log(`deleted script ${SCRIPT_NAME}`);
+        if (DEBUG) console.log(deleteResult);
+    } catch (e) {
+        if (typeof e.message === 'string' && e.message.includes('script_not_found')) {
+            console.log(`script ${SCRIPT_NAME} does not exist`);
+        } else {
+            throw e;
+        }
     }
 }
 
 try {
     const cmdFns: Record<string, () => Promise<void>> = {
         'push': push,
+        'teardown': teardown,
     };
     const cmdFn = cmdFns[Deno.args[0]];
     if (cmdFn === undefined) throw new Error(`deno run --unstable --allow-env --allow-net --allow-read=. tool.ts <cmd>  # cmd one of: ${Object.keys(cmdFns).join(', ')}`);

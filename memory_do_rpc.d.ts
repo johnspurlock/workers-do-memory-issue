@@ -1,5 +1,5 @@
 export type Req = PutRequest | QueryRequest | ClearRequest;
-export type Result = PutResult | QueryResult | ClearResult;
+export type Result = PutResult | QueryResult | ClearResult | LoadResult;
 
 export interface SuccessResponse<TResult> {
     readonly success: true;
@@ -76,5 +76,13 @@ export interface ClearResult {
 }
 
 export type ClearResponse = SuccessResponse<ClearResult> | FailureResponse;
+
+//#endregion
+
+//#region Loaded
+
+export interface LoadResult {
+    readonly kind: 'load';
+}
 
 //#endregion
