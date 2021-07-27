@@ -5,7 +5,7 @@ export interface SuccessResponse<TResult> {
     readonly success: true;
     readonly version: number;
     readonly ensureLoadedMillis: number;
-    readonly staticId: string;
+    readonly processId: string;
     readonly instanceId: string;
     readonly loadedChunks: number;
     readonly loadedRecords: number;
@@ -19,7 +19,7 @@ export interface FailureResponse {
     readonly success: false;
     readonly version?: number;
     readonly ensureLoadedMillis?: number;
-    readonly staticId?: string;
+    readonly processId?: string;
     readonly instanceId?: string;
     readonly loadedChunks?: number;
     readonly loadedRecords?: number;

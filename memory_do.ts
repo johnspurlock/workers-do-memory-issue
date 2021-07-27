@@ -1,6 +1,6 @@
 import { DurableObjectState } from './deps.ts';
 import { DurableObjectEnv } from './worker_types.d.ts';
-import { APPLICATION_JSON_UTF8 } from './constants.ts';
+import { APPLICATION_JSON_UTF8, VERSION } from './constants.ts';
 import { ClearRequest, ClearResult, FailureResponse, PutRequest, PutResult, QueryRequest, QueryResult, Req, Result, SuccessResponse } from './memory_do_rpc.d.ts';
 import { generateUuid } from './uuid_v4.ts';
 
@@ -19,7 +19,7 @@ export class MemoryDO {
     constructor(state: DurableObjectState, env: DurableObjectEnv) {
         this.state = state;
         this.env = env;
-        if (_staticId === undefined) _staticId = computeUniqueId();
+        if (_processId === undefined) _processId = computeUniqueId();
         this.instanceId = computeUniqueId();
     }
 
@@ -33,8 +33,8 @@ export class MemoryDO {
 
     private async computeResponse(request: Request): Promise<Response> {
         let ensureLoadedMillis: number | undefined;
-        const version = 1;
-        const staticId = _staticId;
+        const version = VERSION;
+        const processId = _processId;
         const instanceId = this.instanceId;
         let loadedChunks: number | undefined;
         let loadedRecords: number | undefined;
@@ -43,20 +43,22 @@ export class MemoryDO {
         let memoryChunks: number | undefined;
 
         try {
+            const req = await request.json() as Req;
+
             const start = Date.now();
-            await this.ensureLoaded();
+            if (req.kind !== 'clear') await this.ensureLoaded();
             ensureLoadedMillis = Date.now() - start;
             loadedChunks = this.loadedChunks;
             loadedRecords = this.loadedRecords;
             loadedSize = this.loadedSize;
             loadedListCalls = this.loadedListCalls;
-            const req = await request.json() as Req;
+            
             const result = await this.computeResult(req);
             memoryChunks = this.chunks.size;
             
-            return new Response(JSON.stringify({ success: true, version, ensureLoadedMillis, staticId, instanceId, loadedChunks, loadedRecords, loadedSize, loadedListCalls, memoryChunks, result } as SuccessResponse<Result>, undefined, 2), { headers });
+            return new Response(JSON.stringify({ success: true, version, ensureLoadedMillis, processId, instanceId, loadedChunks, loadedRecords, loadedSize, loadedListCalls, memoryChunks, result } as SuccessResponse<Result>, undefined, 2), { headers });
         } catch (e) {
-            return new Response(JSON.stringify({ success: false, version, ensureLoadedMillis, staticId, instanceId, loadedChunks, loadedRecords, loadedSize, loadedListCalls, memoryChunks, side: 'do', error: `${e.stack || e}` } as FailureResponse, undefined, 2), { headers });
+            return new Response(JSON.stringify({ success: false, version, ensureLoadedMillis, processId, instanceId, loadedChunks, loadedRecords, loadedSize, loadedListCalls, memoryChunks, side: 'do', error: `${e.stack || e}` } as FailureResponse, undefined, 2), { headers });
         }
     }
 
@@ -121,7 +123,7 @@ export class MemoryDO {
                 const chunk = generateChunk();
                 toInsert[chunkKey] = chunk;
                 toInserts++;
-                if (toInserts === 1024) break; // limit the number to insert in one go, to avoid excess cpu issues
+                if (toInserts === 512) break; // limit the number to insert in one go, to avoid excess cpu issues
             }
         }
         const insertKeys = Object.keys(toInsert);
@@ -155,7 +157,7 @@ export class MemoryDO {
 const DATA_VERSION = 1;
 const CHUNK_PREFIX = `v${DATA_VERSION}-chunk-`;
 
-let _staticId: string | undefined;
+let _processId: string | undefined;
 
 const headers: HeadersInit = { 'Content-Type': APPLICATION_JSON_UTF8 };
 
@@ -173,7 +175,7 @@ function computeChunkKey(chunkId: string): string {
 function generateChunk(): Chunk {
     const chunk: Chunk = {};
     // try to hit 4k, (3.1k not quite large enough to trigger)
-    for (let i = 0; i < 41; i++) {
+    for (let i = 0; i < 31; i++) {
         chunk[`item${i}`] = 'x'.repeat(100);
     }
     return chunk;

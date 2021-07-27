@@ -57,7 +57,7 @@ function computeSummary(numObjects: number, responses: NamedObjectResponse[]): u
     for (const { objectName, responseObject } of responses) {
         if (responseObject.success) {
             actualChunks += responseObject.memoryChunks;
-            processInstances[responseObject.staticId] = (processInstances[responseObject.staticId] || 0) + 1;
+            processInstances[responseObject.processId] = (processInstances[responseObject.processId] || 0) + 1;
             if (responseObject.ensureLoadedMillis > 0) {
                 loadeds.push(`${objectName} in ${responseObject.ensureLoadedMillis}ms`);
             }
