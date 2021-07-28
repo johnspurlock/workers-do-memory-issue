@@ -1,5 +1,4 @@
 
-import { existsSync } from './deps_tool.ts';
 import { createDurableObjectsNamespace, deleteDurableObjectsNamespace, deleteScript, listDurableObjectsNamespaces, putScript, updateDurableObjectsNamespace } from './cloudflare_api.ts';
 
 const NAMESPACE_NAME = 'memory-issue-namespace';
@@ -22,9 +21,20 @@ function readCloudflareApiEnvs(): { accountId: string, apiToken: string } {
 async function push() {
     console.log('push!');
 
-    if (!existsSync('worker.js')) throw new Error('worker.js does not exist, did you run: deno bundle worker.ts worker.js');
-    const scriptContents = Deno.readFileSync('worker.js');
-    
+    console.log('bundling worker.ts into bundle.js...');
+    let start = Date.now();
+    const result = await Deno.emit('worker.ts', { bundle: 'module' });
+    console.log(`bundle finished in ${Date.now() - start}ms`);
+
+    if (result.diagnostics.length > 0) {
+        console.warn(Deno.formatDiagnostics(result.diagnostics));
+        throw new Error('bundle failed');
+    }
+
+    const scriptContentsStr = result.files['deno:///bundle.js'];
+    if (typeof scriptContentsStr !== 'string') throw new Error(`bundle.js not found in bundle output files: ${Object.keys(result.files).join(', ')}`);
+    const scriptContents = new TextEncoder().encode(scriptContentsStr);
+
     const { accountId, apiToken } = readCloudflareApiEnvs();
 
     let namespace = (await listDurableObjectsNamespaces(accountId, apiToken)).find(v => v.name === NAMESPACE_NAME);
@@ -38,7 +48,7 @@ async function push() {
     if (DEBUG) console.log(namespace);
 
     console.log(`putting script ${SCRIPT_NAME}...`);
-    const start = Date.now();
+    start = Date.now();
     const script = await putScript(accountId, SCRIPT_NAME, scriptContents, [{ type: 'durable_object_namespace', name: NAMESPACE_BINDING_NAME, namespace_id: namespace.id }], apiToken);
     console.log(`put script ${SCRIPT_NAME} in ${Date.now() - start}ms`);
     if (DEBUG) console.log(script);

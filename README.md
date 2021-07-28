@@ -7,11 +7,11 @@ After cloning the repo locally, set the two required env variables:
 
 Ensure `deno` is installed (it's [easy to install](https://deno.land/#installation))
 
-Build the module js worker script:
- - `deno bundle worker.ts worker.js`
-
-Upload the module js worker script:
+Bundle and upload the module js worker script:
  - `deno run --unstable --allow-env --allow-net --allow-read=. tool.ts push`
+
+The push command will bundle and emit the worker module js as part of the upload, it will not write it out to disk.  To see the emitted js locally for debugging or inspection, run a standard `deno bundle` command.
+ - e.g. `deno bundle worker.ts worker.js`
 
 From the cloudflare dashboard, deploy the new worker `memory-issue-repro` to a route.  Once deployed, there are three data endpoints: `put`, `query`, and `clear`.  Each endpoint takes a trailing `n` path token to indicate how many objects to create for the scenario (n = 1 to 50).
 
