@@ -37,7 +37,7 @@ async function handleRequest(request: Request, memoryNamespace: DurableObjectNam
         if (requestBody !== undefined) {
             const numObjects = n;
             const objectNames = computeObjectNames(numObjects);
-            const results = await Promise.allSettled(computeObjectNames(numObjects).map(v => computeResponse(requestBody, memoryNamespace, v)));
+            const results = await Promise.allSettled(objectNames.map(v => computeResponse(requestBody, memoryNamespace, v)));
             const responses: NamedObjectResponse[] = [];
             for (let i = 0; i < results.length; i++) {
                 responses.push(convertPromiseSettledResult(results[i], objectNames[i]));

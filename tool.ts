@@ -4,6 +4,7 @@ import { createDurableObjectsNamespace, deleteDurableObjectsNamespace, deleteScr
 const NAMESPACE_NAME = 'memory-issue-namespace';
 const SCRIPT_NAME = 'memory-issue-repro';
 const NAMESPACE_BINDING_NAME = 'memoryNamespace';
+const CLASS_NAME = 'MemoryDO';
 const DEBUG = false;
 
 function readRequiredEnv(name: string): string {
@@ -55,7 +56,7 @@ async function push() {
 
     if (typeof namespace.class !== 'string' || typeof namespace.script !== 'string') {
         console.log(`defining namespace ${NAMESPACE_NAME}...`);
-        namespace = await updateDurableObjectsNamespace(accountId, apiToken, { ...namespace, class: 'MemoryDO', script: SCRIPT_NAME });
+        namespace = await updateDurableObjectsNamespace(accountId, apiToken, { ...namespace, class: CLASS_NAME, script: SCRIPT_NAME });
         console.log(`defined namespace ${NAMESPACE_NAME}`);
         if (DEBUG) console.log(namespace);
     }
